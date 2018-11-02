@@ -10,6 +10,10 @@ Packages
 library(ggplot2)
 library(dplyr)
 library(pitchRx) ##The pitch fx package for R 
+##data base management packages
+library(DBI)
+library(dbplyr)
+library(RSQLite)
 ```
 
 Functions and scraping
@@ -45,6 +49,60 @@ GetPitcherData <- function(teamYear, player) {
 
 
 brewdata <- GetBatterData(teamYear[-c(1:32)], "Ryan Braun") ##filtered out the spring training games in the teamYear vector
+```
+
+## Or how to scrape into a database that has access to all of the games from 2008 - 2015
+
+```{r}
+## This whole data base is around 5GB or so, so be careful when downloading
+my_db <- src_sqlite("GamedayDB.sqlite3", create = TRUE)
+# Collect and store all PITCHf/x data from 2008 to 2015
+scrape(start = "2008-01-01", end = "2015-10-04", suffix = "inning/inning_all.xml", connect = my_db$con)
+```
+
+Or read in the database if you alread have it
+
+```{r}
+my_db <- src_sqlite("GamedayDB.sqlite3")
+```
+
+Functions for querying in the data from the database
+
+```{r}
+## This function will query the batter data for a certain year for a batter from the data base
+## Inputs: batterName, year (as strings)
+## Outputs: Data for all of the batter's at bats in the year
+QueryBatterData <- function(batterName, year) {
+  pitch <- dbGetQuery(my_db$con, paste("SELECT * ",
+                                       "FROM pitch ",
+                                       "WHERE gameday_link LIKE '%",year,"%'", sep = ""))
+  atbat <- dbGetQuery(my_db$con, paste("SELECT * ",
+                                       "FROM atbat ",
+                                       "WHERE gameday_link LIKE '%",year,"%'", sep = ""))
+  bats <- atbat %>% filter(batter_name == batterName)
+  data <- bats %>% left_join(pitch, by = c("num", "gameday_link"))
+  return(data)
+}
+
+## This function will query the pitcher data for a certain year for a pitcher from the data base
+## Inputs: pitcherName, year (as strings)
+## Outputs: Data for all of the pitcher's pitches during the year
+QueryPitcherData <- function(pitcherName, year) {
+  pitch <- dbGetQuery(my_db$con, paste("SELECT * ",
+                                       "FROM pitch ",
+                                       "WHERE gameday_link LIKE '%",year,"%'", sep = ""))
+  atbat <- dbGetQuery(my_db$con, paste("SELECT * ",
+                                       "FROM atbat ",
+                                       "WHERE gameday_link LIKE '%",year,"%'", sep = ""))
+  bats <- atbat %>% filter(pitcher_name == pitcherName)
+  data <- bats %>% left_join(pitch, by = c("num", "gameday_link"))
+  return(data)
+}
+
+
+
+brewdata <- QueryBatterData("Ryan Braun", "2011")
+brewdata <- brewdata[!is.na(brewdata$px),]
 ```
 
 
